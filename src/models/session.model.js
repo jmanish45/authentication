@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 const sessionSchema = new mongoose.Schema({
     user : {  // reference to the user who owns this session
         type : mongoose.Schema.Types.ObjectId,
-        ref : "users", // reference to the user collection
+        ref : "Users", // reference to the user collection
         required : [true, 'User reference is required']
     },
     refreshTokenHash : { // hash of the refresh token for security
@@ -24,7 +24,7 @@ const sessionSchema = new mongoose.Schema({
     }
 
 }, {
-    timeStamps : true  // automatically add createdAt and updatedAt fields to the schema for tracking session creation and updates
+    timestamps : true  // automatically add createdAt and updatedAt fields to the schema for tracking session creation and updates
 })
 
 const sessionModel = mongoose.model("sessions", sessionSchema);

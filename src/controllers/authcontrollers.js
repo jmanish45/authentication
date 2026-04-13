@@ -3,11 +3,15 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import config from '../config/config.js';
 import sessionModel from '../models/session.model.js';
+import { sendEmail} from '../services/email.service.js';
+import otpModel from '../models/otp.model.js';
+import { generateOtp, getOtpHtml } from "../utils/utils.js"
+
 
 export async function register(req, res) {
     const {username, email, password} = req.body;
     const isAlreadyRegistered = await userModel.findOne({
-        //
+        
         $or : [
             {username},
             {email}
@@ -30,48 +34,30 @@ export async function register(req, res) {
         password : hashedPassword
     })
 
-    const refreshtoken = jwt.sign({
-        id : user._id
-    }, config.JWT_SECRET,  
-        {
-            expiresIn : '7d'
-        }
-    )
+    const otp = generateOtp();
+    const otpText = `Your OTP for email verification is ${otp}`;
+    const html = getOtpHtml(otp);
 
-    const refreshTokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+    const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
 
-    const session = await sessionModel.create({
-        userId : user._id,  // reference to the user who owns this session
-        refreshTokenHash,  // hash of the refresh token for security
-        ip : req.ip,  // IP address of the client for security and logging purposes
-        userAgent : req.headers['user-agent']  // user agent string of the client for device identification
+    await otpModel.create({
+        email,
+        user : user._id,
+        otpHash
     })
 
-    const accesstoken = jwt.sign(
-        { id: user._id ,
-        sessionId : session._id
-        },
-        config.JWT_SECRET,
-        { expiresIn: '15m' }
-    )
+    await sendEmail(email, "OTP Verification", otpText, html)
 
     
-
-    res.cookie('refreshtoken', refreshtoken, {
-        httpOnly : true, // This flag ensures that the cookie cannot be accessed via JavaScript, providing protection against cross-site scripting (XSS) attacks.
-        secure  : true, // This flag ensures that the cookie is only sent over HTTPS connections, providing an additional layer of security by preventing the cookie from being transmitted over unencrypted HTTP connections.
-        sameSite : 'strict', // This flag restricts the cookie to be sent only in a first-party context, preventing it from being sent along with cross-site requests, which helps mitigate cross-site request forgery (CSRF) attacks.
-        maxAge : 7*24*60*60*1000 // 7 days in milliseconds
-
-    })
     return res.status(201).json({
         message: 'User registered successfully',
         user: {
             id: user._id,
             username: user.username,
-            email: user.email
+            email: user.email,
+            verified : user.verified
         },
-        accesstoken,
+        
 
     });
 
@@ -87,8 +73,13 @@ export async function login(req, res) {
             message : "Invalid email or password"
         }
     )}
+    if(!user.verified) {
+        return res.status(401).json({
+            message : "Email not verified"
+        })
+    }
 
-    const hashedPassword = crypto.createHHash('sha256').update(password)
+    const hashedPassword = crypto.createHash('sha256').update(password).digest('hex');
     const isPasswordValid = hashedPassword === user.password;
 
     if(!isPasswordValid) {
@@ -172,6 +163,19 @@ export async function refreshToken(req, res) {
 
 
 
+    const refreshTokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+
+    const session = await sessionModel.findOne({
+        refreshTokenHash,
+        revoked : false
+    });
+
+    if(!session) {
+        return res.status(401).json({
+            message : 'Invalid refresh token'
+        });
+    }
+
     const decoded = jwt.verify(refreshToken, config.JWT_SECRET);
     const accessToken = jwt.sign({
         id: decoded.id
@@ -191,7 +195,7 @@ export async function refreshToken(req, res) {
     )
 
     const newRefreshTokenHash = crypto.createHash('sha256').update(newRefreshToken).digest('hex');
-    session.refreshToken = newRefreshTokenHash;
+    session.refreshTokenHash = newRefreshTokenHash;
     await session.save(); 
 
     res.cookie("refreshToken", newRefreshToken, {
@@ -258,5 +262,46 @@ export async function logoutAll (req, res) {
     
     }, {
         revoked : true
+    });
+
+    res.clearCookie("refreshToken");
+
+    return res.status(200).json({
+        message : "Logged out from all devices successfully"
+    });
+}
+
+export async function verifyEmail(req, res) {
+    const {otp, email} = req.body;
+    const otpHash = crypto.createHash('sha256').update(otp).digest('hex');
+
+    const otpDoc = await otpModel.findOne({
+        email,
+        otpHash
     })
+
+    if(!otpDoc) {
+        return res.status(200).json({
+            message : "Invalid Otp"
+        })
+    }
+
+    const user = await userModel.findByIdAndUpdate(otpDoc.user, {
+        verified : true
+    }, {
+        new : true
+    });
+
+    await otpModel.deleteMany({
+        user : otpDoc.user
+    })
+
+    return res.status(200).json({
+        message : "Email verified successfully",
+        user : {
+            username : user.username,
+            email : user.email,
+            verified : user.verified
+        }
+    });
 }

@@ -11,8 +11,8 @@ if(!process.env.JWT_SECRET) {
 
 }
 
-if(!process.env.GOOGLE_CLIENT_IF) {
-    throw new Error('GOOGLE_CLIENT_IF is not defined in environment variables');
+if(!process.env.GOOGLE_CLIENT_ID) {
+    throw new Error('GOOGLE_CLIENT_ID is not defined in environment variables');
 
 }
 
@@ -33,7 +33,11 @@ if(!process.env.GOOGLE_USER) {
 
 const config = {
     MONGO_URI: process.env.MONGO_URI,
-    JWT_SECRET: process.env.JWT_SECRET
+    JWT_SECRET: process.env.JWT_SECRET,
+    GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+    GOOGLE_REFRESH_TOKEN: process.env.GOOGLE_REFRESH_TOKEN,
+    GOOGLE_USER: process.env.GOOGLE_USER
 
 }  // You can add more configuration variables as needed, such as PORT, JWT_SECRET, etc.
 //201 : Created - The request has been fulfilled and has resulted in one or more new resources being created. This is typically used in response to a POST request that creates a new resource on the server.
